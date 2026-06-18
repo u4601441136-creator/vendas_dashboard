@@ -627,9 +627,10 @@ with tab1:
         st.markdown("---")
         
         st.markdown("### Vendas por Semana de Trabalho")
-        from datetime import date
+        from datetime import date, timedelta
         year = 2026
-        month_num = list(month_names.keys())[list(month_names.values()).index(selected_month)] if selected_month in month_names.values() else 6
+        month_map = {"Janeiro": 1, "Fevereiro": 2, "Marco": 3, "Março": 3, "Abril": 4, "Maio": 5, "Junho": 6, "Julho": 7, "Agosto": 8, "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12}
+        month_num = month_map.get(selected_month, 6)
         
         weeks = {}
         for d in filtered_days:
@@ -637,7 +638,7 @@ with tab1:
                 dt = date(year, month_num, d)
                 weekday = dt.weekday()
                 if weekday < 5:
-                    week_start = dt - __import__('datetime').timedelta(days=weekday)
+                    week_start = dt - timedelta(days=weekday)
                     week_label = f"Sem {week_start.day}/{week_start.month}"
                     if week_label not in weeks:
                         weeks[week_label] = []
