@@ -366,6 +366,17 @@ def update_monthly_file(day_date, daily_summary):
         wb_write = openpyxl.load_workbook(filepath)
         ws_write = wb_write[sheet_found]
         
+        processed_file = os.path.join(DATA_DIR, ".processed_days.json")
+        processed_days = {}
+        if os.path.exists(processed_file):
+            import json
+            with open(processed_file, "r") as f:
+                processed_days = json.load(f)
+        
+        day_key = f"{month_name}_{day_num}"
+        if day_key in processed_days:
+            return False, f"O dia {day_num} de {month_name} ja foi processado anteriormente"
+        
         updated_vendors = []
         for resp_text, data in daily_summary.items():
             vendor_code = get_vendedor_code_from_resp(resp_text)
@@ -407,6 +418,11 @@ def update_monthly_file(day_date, daily_summary):
                 updated_vendors.append(f"{vendor_code}: {data['total_vendas']:.2f} EUR ({data['clientes']} clientes)")
         
         wb_write.save(filepath)
+        
+        processed_days[day_key] = True
+        import json
+        with open(processed_file, "w") as f:
+            json.dump(processed_days, f)
         return True, updated_vendors
         
     except Exception as e:
