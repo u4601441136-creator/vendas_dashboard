@@ -471,7 +471,6 @@ with tab1:
     
     if month_data and filtered_days:
         total_vendas = 0
-        total_clientes = 0
         vendedor_stats = {}
         
         for v in selected_vendedores:
@@ -482,7 +481,6 @@ with tab1:
             media_v = vendas_v / dias_trabalho if dias_trabalho > 0 else 0
             
             total_vendas += vendas_v
-            total_clientes += clientes_v
             
             vendedor_stats[v] = {
                 "vendas": vendas_v,
@@ -502,14 +500,12 @@ with tab1:
         media_diaria_geral = total_vendas / len(filtered_days) if filtered_days else 0
         vendedores_ativos = sum(1 for v in selected_vendedores if vendedor_stats[v]["dias_trabalho"] > 0)
         
-        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+        kpi1, kpi2, kpi3 = st.columns(3)
         with kpi1:
             st.metric("Total Vendas", f"{total_vendas:,.2f} EUR")
         with kpi2:
-            st.metric("Total Clientes", f"{total_clientes:,}")
-        with kpi3:
             st.metric("Media Diaria", f"{media_diaria_geral:,.2f} EUR")
-        with kpi4:
+        with kpi3:
             st.metric("Vendedores Ativos", f"{vendedores_ativos}")
         
         st.markdown("---")
@@ -607,7 +603,6 @@ with tab1:
             for d in filtered_days:
                 row[f"Dia {d}"] = v_data.get("daily_sales", {}).get(d, 0)
             row["Acumulado"] = vendedor_stats[v]["vendas"]
-            row["Clientes"] = vendedor_stats[v]["clientes"]
             row["Media/Dia"] = round(vendedor_stats[v]["media_diaria"], 2)
             table_data.append(row)
         
@@ -620,7 +615,6 @@ with tab1:
                 for v in selected_vendedores
             )
         total_row["Acumulado"] = total_vendas
-        total_row["Clientes"] = total_clientes
         total_row["Media/Dia"] = round(media_diaria_geral, 2)
         df_table = pd.concat([df_table, pd.DataFrame([total_row])], ignore_index=True)
         
