@@ -193,11 +193,13 @@ def load_single_daily(filepath):
             if val0 and val0 != "nan" and val0.strip() != "" and val2 is not None:
                 try:
                     total_liq = float(val2)
+                    resp_display = current_resp.replace("Resp. Cobranca: ", "") if current_resp else "N/A"
+                    resp_display = resp_display.replace("Resp. Cobran\u00e7a: ", "") if current_resp else "N/A"
                     results.append({
-                        "Responsável": current_resp.replace("Resp. Cobrança: ", "") if current_resp else "N/A",
+                        "Responsavel": resp_display,
                         "Entidade": val0,
                         "Nome": val1,
-                        "Total Líquido": total_liq
+                        "Total Liq": total_liq
                     })
                 except (ValueError, TypeError):
                     pass
@@ -205,8 +207,159 @@ def load_single_daily(filepath):
         if results:
             return pd.DataFrame(results)
     except Exception as e:
-        st.error(f"Erro ao ler ficheiro diário: {e}")
+        st.error(f"Erro ao ler ficheiro diario: {e}")
     return None
+
+def parse_daily_file(filepath):
+    try:
+        df = pd.read_excel(filepath, header=None)
+        results = []
+        current_resp = None
+        num_clients = 0
+        
+        for _, row in df.iterrows():
+            val0 = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+            val1 = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ""
+            val2 = row.iloc[2] if len(row) > 2 and pd.notna(row.iloc[2]) else None
+            
+            if "Resp." in val0 or "resp" in val0.lower():
+                current_resp = val0
+                import re
+                match = re.search(r'\((\d+)\)', val0)
+                if match:
+                    num_clients = int(match.group(1))
+                continue
+            
+            if val0 and val0 != "nan" and val0.strip() != "" and val2 is not None:
+                try:
+                    total_liq = float(val2)
+                    results.append({
+                        "Responsavel": current_resp,
+                        "Entidade": val0,
+                        "Nome": val1,
+                        "Total Liq": total_liq
+                    })
+                except (ValueError, TypeError):
+                    pass
+        
+        resp_summary = {}
+        for r in results:
+            resp = r["Responsavel"]
+            if resp not in resp_summary:
+                resp_summary[resp] = {"total_vendas": 0, "clientes": 0}
+            resp_summary[resp]["total_vendas"] += r["Total Liq"]
+        
+        for resp_key in resp_summary:
+            import re
+            match = re.search(r'\((\d+)\)', resp_key)
+            if match:
+                resp_summary[resp_key]["clientes"] = int(match.group(1))
+        
+        return resp_summary
+    except Exception as e:
+        st.error(f"Erro ao ler ficheiro diario: {e}")
+    return None
+
+def get_vendedor_code_from_resp(resp_text):
+    import re
+    match = re.search(r':\s*(\w+)', resp_text)
+    if match:
+        return match.group(1)
+    return None
+
+def update_monthly_file(day_date, daily_summary):
+    filepath = os.path.join(DATA_DIR, "vendas_mensais_2026.xlsx")
+    if not os.path.exists(filepath):
+        return False, "Ficheiro mensal nao encontrado"
+    
+    day_num = day_date.day
+    month_num = day_date.month
+    month_names = {
+        1: "Janeiro", 2: "Fevereiro", 3: "Marco", 4: "Abril",
+        5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+        9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+    }
+    month_name = month_names.get(month_num)
+    
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(filepath, data_only=True)
+        
+        sheet_found = None
+        for sn in wb.sheetnames:
+            if month_name in sn:
+                sheet_found = sn
+                break
+        
+        if not sheet_found:
+            return False, f"Aba '{month_name}' nao encontrada"
+        
+        ws = wb[sheet_found]
+        
+        day_col = None
+        for col in range(2, ws.max_column + 1):
+            val = ws.cell(row=1, column=col).value
+            try:
+                if int(float(val)) == day_num:
+                    day_col = col
+                    break
+            except (ValueError, TypeError):
+                pass
+        
+        if day_col is None:
+            return False, f"Coluna para o dia {day_num} nao encontrada"
+        
+        client_col = day_col + 1
+        
+        vendor_row_map = {}
+        for row in range(3, ws.max_row + 1):
+            vendor_name = str(ws.cell(row=row, column=1).value or "").strip()
+            if vendor_name and vendor_name != "nan":
+                vendor_row_map[vendor_name.upper()] = row
+                vendor_row_map[vendor_name.replace("Vendas ", "").upper()] = row
+        
+        wb_write = openpyxl.load_workbook(filepath)
+        ws_write = wb_write[sheet_found]
+        
+        updated_vendors = []
+        for resp_text, data in daily_summary.items():
+            vendor_code = get_vendedor_code_from_resp(resp_text)
+            if not vendor_code:
+                continue
+            
+            vendor_code_upper = vendor_code.upper()
+            target_row = None
+            for key, row in vendor_row_map.items():
+                if vendor_code_upper in key:
+                    target_row = row
+                    break
+            
+            if target_row:
+                current_sales = ws_write.cell(row=target_row, column=day_col).value or 0
+                try:
+                    current_sales = float(current_sales)
+                except (ValueError, TypeError):
+                    current_sales = 0
+                
+                new_sales = current_sales + data["total_vendas"]
+                ws_write.cell(row=target_row, column=day_col).value = new_sales
+                
+                current_clients = ws_write.cell(row=target_row, column=client_col).value or 0
+                try:
+                    current_clients = int(float(current_clients))
+                except (ValueError, TypeError):
+                    current_clients = 0
+                
+                new_clients = current_clients + data["clientes"]
+                ws_write.cell(row=target_row, column=client_col).value = new_clients
+                
+                updated_vendors.append(f"{vendor_code}: {data['total_vendas']:.2f} EUR ({data['clientes']} clientes)")
+        
+        wb_write.save(filepath)
+        return True, updated_vendors
+        
+    except Exception as e:
+        return False, f"Erro ao atualizar ficheiro: {str(e)}"
 
 def get_vendedor_cor(vendedor):
     cores = {
@@ -484,36 +637,46 @@ with tab2:
     uploaded_daily = st.file_uploader("Carregar ficheiro Excel do dia (ex: 16-06-2026.xlsx)", type=["xlsx"], key="daily_upload")
     
     if uploaded_daily:
+        try:
+            date_str = uploaded_daily.name.replace(".xlsx", "")
+            day_date = datetime.strptime(date_str, "%d-%m-%Y")
+        except ValueError:
+            st.error("Nome do ficheiro invalido. Use o formato DD-MM-AAAA.xlsx")
+            st.stop()
+        
         temp_path = os.path.join(DATA_DIR, uploaded_daily.name)
         with open(temp_path, "wb") as f:
             f.write(uploaded_daily.getbuffer())
         
+        daily_summary = parse_daily_file(temp_path)
+        
         df_daily = load_single_daily(temp_path)
+        
         if df_daily is not None:
             st.success(f"Ficheiro {uploaded_daily.name} carregado com sucesso!")
             
-            total_dia = df_daily["Total Líquido"].sum()
+            total_dia = df_daily["Total Liq"].sum()
             clientes_dia = len(df_daily)
-            responsaveis = df_daily["Responsável"].unique()
+            responsaveis = df_daily["Responsavel"].unique()
             
             k1, k2, k3 = st.columns(3)
             with k1:
                 st.metric("Total Vendas do Dia", f"{total_dia:,.2f} EUR")
             with k2:
-                st.metric("Nº Clientes", f"{clientes_dia}")
+                st.metric("N Clientes", f"{clientes_dia}")
             with k3:
                 st.metric("Responsaveis", f"{len(responsaveis)}")
             
             st.markdown("---")
             
             st.markdown("### Vendas por Responsavel")
-            resumo_resp = df_daily.groupby("Responsável").agg(
-                Total=("Total Líquido", "sum"),
-                Clientes=("Total Líquido", "count")
+            resumo_resp = df_daily.groupby("Responsavel").agg(
+                Total=("Total Liq", "sum"),
+                Clientes=("Total Liq", "count")
             ).reset_index().sort_values("Total", ascending=False)
             
             fig_resp = go.Figure(data=[go.Bar(
-                x=resumo_resp["Responsável"],
+                x=resumo_resp["Responsavel"],
                 y=resumo_resp["Total"],
                 text=resumo_resp["Total"].apply(lambda x: f"{x:,.2f}"),
                 textposition="outside",
@@ -528,10 +691,34 @@ with tab2:
             
             st.markdown("### Detalhe por Cliente")
             st.dataframe(
-                df_daily.style.format({"Total Líquido": "{:,.2f} EUR"}),
+                df_daily.style.format({"Total Liq": "{:,.2f} EUR"}),
                 use_container_width=True,
                 hide_index=True
             )
+            
+            st.markdown("---")
+            st.markdown("### Atualizar Ficheiro Mensal")
+            
+            if daily_summary:
+                st.info(f"Datos extraidos do ficheiro diario:")
+                for resp, data in daily_summary.items():
+                    vendor_code = get_vendedor_code_from_resp(resp)
+                    if vendor_code:
+                        st.write(f"- **{vendor_code}**: {data['total_vendas']:,.2f} EUR ({data['clientes']} clientes)")
+                
+                if st.button("Atualizar Ficheiro Mensal", type="primary", use_container_width=True):
+                    success, message = update_monthly_file(day_date, daily_summary)
+                    if success:
+                        st.success("Ficheiro mensal atualizado com sucesso!")
+                        st.write("Vendedores atualizados:")
+                        for v in message:
+                            st.write(f"  - {v}")
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error(f"Erro ao atualizar: {message}")
+            else:
+                st.warning("Nao foi possivel extrair dados do ficheiro diario.")
             
             os.remove(temp_path)
         else:
@@ -550,6 +737,7 @@ with tab2:
         1. Coloque os ficheiros diarios (ex: `16-06-2026.xlsx`) na pasta `data/`
         2. Ou faca upload usando o botao acima
         3. O ficheiro deve ter a estrutura: Entidade | Nome | Total Liq.
+        4. Ao carregar um ficheiro diario, o ficheiro mensal sera atualizado automaticamente
         """)
 
 st.sidebar.markdown("---")
