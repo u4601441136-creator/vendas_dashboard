@@ -626,6 +626,73 @@ with tab1:
         
         st.markdown("---")
         
+        st.markdown("### Vendas por Semana de Trabalho")
+        from datetime import date
+        year = 2026
+        month_num = list(month_names.keys())[list(month_names.values()).index(selected_month)] if selected_month in month_names.values() else 6
+        
+        weeks = {}
+        for d in filtered_days:
+            try:
+                dt = date(year, month_num, d)
+                weekday = dt.weekday()
+                if weekday < 5:
+                    week_start = dt - __import__('datetime').timedelta(days=weekday)
+                    week_label = f"Sem {week_start.day}/{week_start.month}"
+                    if week_label not in weeks:
+                        weeks[week_label] = []
+                    weeks[week_label].append(d)
+            except ValueError:
+                pass
+        
+        if weeks:
+            week_names_sorted = sorted(weeks.keys(), key=lambda x: int(x.split()[1].split('/')[0]))
+            
+            week_chart_data = {}
+            for v in selected_vendedores:
+                v_data = month_data["vendedores"].get(v, {})
+                week_chart_data[v] = {}
+                for wk_label, wk_days in weeks.items():
+                    week_chart_data[v][wk_label] = sum(v_data.get("daily_sales", {}).get(d, 0) for d in wk_days)
+            
+            fig_week = go.Figure()
+            for v in selected_vendedores:
+                fig_week.add_trace(go.Bar(
+                    x=week_names_sorted,
+                    y=[week_chart_data[v].get(wk, 0) for wk in week_names_sorted],
+                    name=v.strip(),
+                    marker_color=get_vendedor_cor(v)
+                ))
+            fig_week.update_layout(
+                barmode="group",
+                xaxis_title="Semana",
+                yaxis_title="Vendas (EUR)",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                height=400,
+                margin=dict(l=40, r=20, t=40, b=40)
+            )
+            st.plotly_chart(fig_week, use_container_width=True)
+            
+            st.markdown("### Tabela de Vendas por Semana")
+            week_table_data = []
+            for v in selected_vendedores:
+                row = {"Vendedor": v.strip()}
+                for wk in week_names_sorted:
+                    row[wk] = week_chart_data[v].get(wk, 0)
+                row["Total"] = sum(week_chart_data[v].values())
+                week_table_data.append(row)
+            
+            total_week_row = {"Vendedor": "TOTAL"}
+            for wk in week_names_sorted:
+                total_week_row[wk] = sum(week_chart_data[v].get(wk, 0) for v in selected_vendedores)
+            total_week_row["Total"] = total_vendas
+            week_table_data.append(total_week_row)
+            
+            df_week_table = pd.DataFrame(week_table_data)
+            st.dataframe(df_week_table, use_container_width=True, hide_index=True)
+        
+        st.markdown("---")
+        
         st.markdown("### Tabela de Vendas por Vendedor e Dia")
         table_data = []
         for v in selected_vendedores:
