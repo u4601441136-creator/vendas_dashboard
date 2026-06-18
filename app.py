@@ -59,23 +59,25 @@ def _load_env_file():
                     key, value = line.split("=", 1)
                     os.environ.setdefault(key.strip(), value.strip().strip('"'))
 
-@st.cache_resource
-def get_mongo_client():
+def _get_mongo_uri():
     mongo_uri = os.environ.get("MONGODB_URI", "")
     if not mongo_uri:
         _load_env_file()
         mongo_uri = os.environ.get("MONGODB_URI", "")
-    if not mongo_uri:
-        return None
-    return MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+    return mongo_uri
 
 def get_db():
-    client = get_mongo_client()
-    if client is None:
+    if "mongo_db" in st.session_state:
+        return st.session_state.mongo_db
+    mongo_uri = _get_mongo_uri()
+    if not mongo_uri:
         return None
     try:
+        client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000, connectTimeoutMS=5000, socketTimeoutMS=10000)
         client.admin.command("ping")
-        return client["vendas_dashboard"]
+        db = client["vendas_dashboard"]
+        st.session_state.mongo_db = db
+        return db
     except Exception as e:
         st.session_state["mongo_error"] = str(e)
         return None
@@ -189,31 +191,17 @@ def load_monthly_data():
     if db is None:
         return None
     
+    all_months = {}
+    
     try:
-        db.admin.command("ping")
+        results = list(db.vendas.find({}, {"_id": 0}))
     except Exception:
         return None
     
-    all_months = {}
-    
-    month_order = ["Janeiro", "Fevereiro", "Marco", "Abril", "Maio", "Junho",
-                   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
-    
-    pipeline = [
-        {"$group": {
-            "_id": {"month": "$month", "vendor": "$vendor", "day": "$day"},
-            "sales": {"$first": "$sales"},
-            "clients": {"$first": "$clients"}
-        }},
-        {"$sort": {"_id.month": 1, "_id.vendor": 1, "_id.day": 1}}
-    ]
-    
-    results = list(db.vendas.aggregate(pipeline))
-    
     for r in results:
-        month = r["_id"]["month"]
-        vendor = r["_id"]["vendor"]
-        day = r["_id"]["day"]
+        month = r["month"]
+        vendor = r["vendor"]
+        day = r["day"]
         sales = r["sales"]
         clients = r["clients"]
         
