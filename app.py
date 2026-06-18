@@ -49,9 +49,22 @@ def check_password():
 if not check_password():
     st.stop()
 
+def _load_env_file():
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "atlas-credentials.env")
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, value = line.split("=", 1)
+                    os.environ.setdefault(key.strip(), value.strip().strip('"'))
+
 @st.cache_resource
 def get_mongo_client():
     mongo_uri = os.environ.get("MONGODB_URI", "")
+    if not mongo_uri:
+        _load_env_file()
+        mongo_uri = os.environ.get("MONGODB_URI", "")
     if not mongo_uri:
         return None
     return MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
