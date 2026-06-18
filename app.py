@@ -184,7 +184,6 @@ def import_excel_to_mongodb(filepath):
     
     return True, f"{count} registos importados"
 
-@st.cache_data(ttl=0)
 def load_monthly_data():
     db = get_db()
     if db is None:
@@ -453,27 +452,13 @@ if db is None:
         if success:
             st.sidebar.success(msg)
             os.remove(filepath)
-            st.cache_data.clear()
             st.rerun()
         else:
             st.sidebar.error(msg)
     
     st.stop()
 
-# Debug: count records
-try:
-    record_count = db.vendas.count_documents({})
-    st.sidebar.info(f"Registos no MongoDB: {record_count}")
-except Exception as e:
-    st.sidebar.error(f"Erro ao contar registos: {e}")
-
 monthly_data = load_monthly_data()
-
-if monthly_data:
-    st.sidebar.success(f"Dados carregados: {len(monthly_data)} meses")
-else:
-    st.sidebar.error("load_monthly_data() retornou vazio ou None")
-
 daily_files = load_daily_files()
 
 st.sidebar.markdown("## Mapa de Vendas 2026")
@@ -522,7 +507,6 @@ else:
         if success:
             st.sidebar.success(msg)
             os.remove(filepath)
-            st.cache_data.clear()
             st.rerun()
         else:
             st.sidebar.error(msg)
@@ -875,7 +859,6 @@ with tab2:
                         for v in message:
                             st.write(f"  - {v}")
                         
-                        st.cache_data.clear()
                         st.rerun()
                     else:
                         st.error(f"Erro ao atualizar: {message}")
