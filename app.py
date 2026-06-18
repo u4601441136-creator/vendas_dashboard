@@ -6,6 +6,7 @@ from plotly.subplots import make_subplots
 import os
 import glob
 from datetime import datetime, timedelta
+from pymongo import MongoClient
 
 st.set_page_config(
     page_title="Mapa de Vendas",
@@ -48,7 +49,22 @@ def check_password():
 if not check_password():
     st.stop()
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+@st.cache_resource
+def get_mongo_client():
+    mongo_uri = os.environ.get("MONGODB_URI", "")
+    if not mongo_uri:
+        return None
+    return MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+
+def get_db():
+    client = get_mongo_client()
+    if client is None:
+        return None
+    try:
+        client.admin.command("ping")
+        return client["vendas_dashboard"]
+    except Exception:
+        return None
 
 def evaluate_day_formula(formula, col_values):
     import re
@@ -63,22 +79,15 @@ def evaluate_day_formula(formula, col_values):
             return col_values[ref_col_num] + offset
     return None
 
-@st.cache_data
-def load_monthly_data():
-    filepath = os.path.join(DATA_DIR, "vendas_mensais_2026.xlsx")
-    if not os.path.exists(filepath):
-        try:
-            src = r"C:\Users\Comerciais\Desktop\Apps\Vendas Mensais\Vendas mensais vend (2026).xlsx"
-            if os.path.exists(src):
-                import shutil
-                shutil.copy2(src, filepath)
-            else:
-                return None
-        except Exception:
-            return None
+def import_excel_to_mongodb(filepath):
+    db = get_db()
+    if db is None:
+        return False, "MongoDB nao disponivel"
     
-    all_months = {}
+    import openpyxl
+    wb = openpyxl.load_workbook(filepath, data_only=False)
     xl = pd.ExcelFile(filepath)
+    
     month_map = {
         "Janeiro": "Janeiro", "Fevereiro": "Fevereiro", "Marco": "Marco",
         "Março": "Marco", "Abril": "Abril", "Maio": "Maio",
@@ -87,9 +96,10 @@ def load_monthly_data():
         "Dezembro": "Dezembro"
     }
     
-    import openpyxl
-    wb = openpyxl.load_workbook(filepath, data_only=False)
+    db.vendas.drop()
+    db.processed_days.drop()
     
+    count = 0
     for sheet_name in xl.sheet_names:
         display_name = sheet_name
         for pt, clean in month_map.items():
@@ -97,106 +107,136 @@ def load_monthly_data():
                 display_name = clean
                 break
         
-        if sheet_name in wb.sheetnames:
-            ws = wb[sheet_name]
-            day_col_mapping = {}
-            col_values = {}
-            
-            for col_idx in range(2, ws.max_column + 1):
-                val = ws.cell(row=1, column=col_idx).value
-                if isinstance(val, (int, float)):
-                    day_num = int(float(val))
-                    if 1 <= day_num <= 31:
-                        day_col_mapping[col_idx] = day_num
-                        col_values[col_idx] = day_num
-                elif isinstance(val, str) and val.startswith('='):
-                    calculated = evaluate_day_formula(val, col_values)
-                    if calculated and 1 <= calculated <= 31:
-                        day_col_mapping[col_idx] = calculated
-                        col_values[col_idx] = calculated
-            
-            df = pd.read_excel(filepath, sheet_name=sheet_name, header=None)
-            parsed = parse_month_sheet(df, sheet_name, day_col_mapping)
-            if parsed is not None:
-                all_months[display_name] = parsed
-    
-    wb.close()
-    return all_months
-
-def parse_month_sheet(df, sheet_name, day_col_mapping=None):
-    if df.shape[0] < 3 or df.shape[1] < 5:
-        return None
-
-    if day_col_mapping is None:
+        if sheet_name not in wb.sheetnames:
+            continue
+        
+        ws = wb[sheet_name]
         day_col_mapping = {}
-        for col_idx in range(1, df.shape[1]):
-            val = df.iloc[0, col_idx]
-            try:
+        col_values = {}
+        
+        for col_idx in range(2, ws.max_column + 1):
+            val = ws.cell(row=1, column=col_idx).value
+            if isinstance(val, (int, float)):
                 day_num = int(float(val))
                 if 1 <= day_num <= 31:
                     day_col_mapping[col_idx] = day_num
-            except (ValueError, TypeError):
-                pass
-
-    if not day_col_mapping:
-        return None
-
-    vendedor_rows = {}
-    vendedores_nomes = []
-
-    for row_idx in range(2, df.shape[0]):
-        vendedor = str(df.iloc[row_idx, 0]).strip() if pd.notna(df.iloc[row_idx, 0]) else ""
-        if not vendedor or vendedor == "nan":
-            continue
-        if "acumulado" in vendedor.lower() or "total" in vendedor.lower() or vendedor == "0":
-            continue
-
-        daily_data = {}
-        client_data = {}
-        for col_idx, day_num in day_col_mapping.items():
-            pandas_col = col_idx - 1
-            val_sales = df.iloc[row_idx, pandas_col] if pandas_col < df.shape[1] else None
-            try:
-                daily_data[day_num] = float(val_sales) if pd.notna(val_sales) else 0.0
-            except (ValueError, TypeError):
-                daily_data[day_num] = 0.0
-
-            client_col = pandas_col + 1
-            if client_col < df.shape[1]:
-                val_clients = df.iloc[row_idx, client_col]
+                    col_values[col_idx] = day_num
+            elif isinstance(val, str) and val.startswith('='):
+                calculated = evaluate_day_formula(val, col_values)
+                if calculated and 1 <= calculated <= 31:
+                    day_col_mapping[col_idx] = calculated
+                    col_values[col_idx] = calculated
+        
+        df = pd.read_excel(filepath, sheet_name=sheet_name, header=None)
+        
+        for row_idx in range(2, df.shape[0]):
+            vendedor = str(df.iloc[row_idx, 0]).strip() if pd.notna(df.iloc[row_idx, 0]) else ""
+            if not vendedor or vendedor == "nan":
+                continue
+            if "acumulado" in vendedor.lower() or "total" in vendedor.lower() or vendedor == "0":
+                continue
+            
+            for col_idx, day_num in day_col_mapping.items():
+                pandas_col = col_idx - 1
+                val_sales = df.iloc[row_idx, pandas_col] if pandas_col < df.shape[1] else None
                 try:
-                    client_data[day_num] = int(float(val_clients)) if pd.notna(val_clients) else 0
+                    sales = float(val_sales) if pd.notna(val_sales) else 0.0
                 except (ValueError, TypeError):
-                    client_data[day_num] = 0
-            else:
-                client_data[day_num] = 0
+                    sales = 0.0
+                
+                client_col = pandas_col + 1
+                if client_col < df.shape[1]:
+                    val_clients = df.iloc[row_idx, client_col]
+                    try:
+                        clients = int(float(val_clients)) if pd.notna(val_clients) else 0
+                    except (ValueError, TypeError):
+                        clients = 0
+                else:
+                    clients = 0
+                
+                if sales != 0 or clients != 0:
+                    db.vendas.insert_one({
+                        "month": display_name,
+                        "vendor": vendedor,
+                        "day": day_num,
+                        "sales": sales,
+                        "clients": clients
+                    })
+                    count += 1
+    
+    wb.close()
+    
+    db.vendas.create_index([("month", 1), ("vendor", 1), ("day", 1)], unique=True)
+    
+    return True, f"{count} registos importados"
 
-        vendedor_rows[vendedor] = {
-            "daily_sales": daily_data,
-            "daily_clients": client_data,
-            "days": sorted(day_col_mapping.values())
-        }
-        vendedores_nomes.append(vendedor)
-
-    return {
-        "days": sorted(day_col_mapping.values()),
-        "vendedores": vendedor_rows,
-        "vendedores_order": vendedores_nomes
-    }
+@st.cache_data(ttl=0)
+def load_monthly_data():
+    db = get_db()
+    if db is None:
+        return None
+    
+    try:
+        db.admin.command("ping")
+    except Exception:
+        return None
+    
+    all_months = {}
+    
+    month_order = ["Janeiro", "Fevereiro", "Marco", "Abril", "Maio", "Junho",
+                   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+    
+    pipeline = [
+        {"$group": {
+            "_id": {"month": "$month", "vendor": "$vendor", "day": "$day"},
+            "sales": {"$first": "$sales"},
+            "clients": {"$first": "$clients"}
+        }},
+        {"$sort": {"_id.month": 1, "_id.vendor": 1, "_id.day": 1}}
+    ]
+    
+    results = list(db.vendas.aggregate(pipeline))
+    
+    for r in results:
+        month = r["_id"]["month"]
+        vendor = r["_id"]["vendor"]
+        day = r["_id"]["day"]
+        sales = r["sales"]
+        clients = r["clients"]
+        
+        if month not in all_months:
+            all_months[month] = {
+                "days": set(),
+                "vendedores": {},
+                "vendedores_order": []
+            }
+        
+        all_months[month]["days"].add(day)
+        
+        if vendor not in all_months[month]["vendedores"]:
+            all_months[month]["vendedores"][vendor] = {
+                "daily_sales": {},
+                "daily_clients": {},
+                "days": set()
+            }
+            all_months[month]["vendedores_order"].append(vendor)
+        
+        all_months[month]["vendedores"][vendor]["daily_sales"][day] = sales
+        all_months[month]["vendedores"][vendor]["daily_clients"][day] = clients
+        all_months[month]["vendedores"][vendor]["days"].add(day)
+    
+    for month in all_months:
+        all_months[month]["days"] = sorted(all_months[month]["days"])
+        for vendor in all_months[month]["vendedores"]:
+            all_months[month]["vendedores"][vendor]["days"] = sorted(
+                all_months[month]["vendedores"][vendor]["days"]
+            )
+    
+    return all_months
 
 def load_daily_files():
     daily_files = {}
-    parent_dir = r"C:\Users\Comerciais\Desktop\Apps\Vendas Mensais"
-    for f in glob.glob(os.path.join(parent_dir, "*.xlsx")):
-        fname = os.path.basename(f)
-        if fname.startswith("~") or "vendas_mensais" in fname.lower():
-            continue
-        try:
-            date_str = fname.replace(".xlsx", "")
-            date_obj = datetime.strptime(date_str, "%d-%m-%Y")
-            daily_files[date_obj] = f
-        except ValueError:
-            pass
+    DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
     
     for f in glob.glob(os.path.join(DATA_DIR, "*.xlsx")):
         fname = os.path.basename(f)
@@ -252,7 +292,6 @@ def parse_daily_file(filepath):
         df = pd.read_excel(filepath, header=None)
         results = []
         current_resp = None
-        num_clients = 0
         
         for _, row in df.iterrows():
             val0 = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
@@ -263,8 +302,6 @@ def parse_daily_file(filepath):
                 current_resp = val0
                 import re
                 match = re.search(r'\((\d+)\)', val0)
-                if match:
-                    num_clients = int(match.group(1))
                 continue
             
             if val0 and val0 != "nan" and val0.strip() != "" and val2 is not None:
@@ -304,10 +341,10 @@ def get_vendedor_code_from_resp(resp_text):
         return match.group(1)
     return None
 
-def update_monthly_file(day_date, daily_summary):
-    filepath = os.path.join(DATA_DIR, "vendas_mensais_2026.xlsx")
-    if not os.path.exists(filepath):
-        return False, "Ficheiro mensal nao encontrado"
+def update_monthly_data(day_date, daily_summary):
+    db = get_db()
+    if db is None:
+        return False, "MongoDB nao disponivel"
     
     day_num = day_date.day
     month_num = day_date.month
@@ -318,115 +355,47 @@ def update_monthly_file(day_date, daily_summary):
     }
     month_name = month_names.get(month_num)
     
-    try:
-        import openpyxl
-        wb = openpyxl.load_workbook(filepath, data_only=False)
+    processed = db.processed_days.find_one({"month": month_name, "day": day_num})
+    if processed:
+        return False, f"O dia {day_num} de {month_name} ja foi processado anteriormente"
+    
+    updated_vendors = []
+    for resp_text, data in daily_summary.items():
+        vendor_code = get_vendedor_code_from_resp(resp_text)
         
-        sheet_found = None
-        for sn in wb.sheetnames:
-            if month_name in sn:
-                sheet_found = sn
-                break
+        if not vendor_code:
+            vendor_code = "Sem Vendedor"
         
-        if not sheet_found:
-            return False, f"Aba '{month_name}' nao encontrada"
-        
-        ws = wb[sheet_found]
-        
-        day_col = None
-        col_values = {}
-        for col in range(2, ws.max_column + 1):
-            val = ws.cell(row=1, column=col).value
-            if isinstance(val, (int, float)):
-                day_num_val = int(float(val))
-                col_values[col] = day_num_val
-                if day_num_val == day_num:
-                    day_col = col
-                    break
-            elif isinstance(val, str) and val.startswith('='):
-                calculated = evaluate_day_formula(val, col_values)
-                if calculated:
-                    col_values[col] = calculated
-                    if calculated == day_num:
-                        day_col = col
-                        break
-        
-        if day_col is None:
-            return False, f"Coluna para o dia {day_num} nao encontrada"
-        
-        client_col = day_col + 1
-        
-        vendor_row_map = {}
-        for row in range(3, ws.max_row + 1):
-            vendor_name = str(ws.cell(row=row, column=1).value or "").strip()
-            if vendor_name and vendor_name != "nan":
-                vendor_row_map[vendor_name.upper()] = row
-                vendor_row_map[vendor_name.replace("Vendas ", "").upper()] = row
-        
-        wb_write = openpyxl.load_workbook(filepath)
-        ws_write = wb_write[sheet_found]
-        
-        processed_file = os.path.join(DATA_DIR, ".processed_days.json")
-        processed_days = {}
-        if os.path.exists(processed_file):
-            import json
-            with open(processed_file, "r") as f:
-                processed_days = json.load(f)
-        
-        day_key = f"{month_name}_{day_num}"
-        if day_key in processed_days:
-            return False, f"O dia {day_num} de {month_name} ja foi processado anteriormente"
-        
-        updated_vendors = []
-        for resp_text, data in daily_summary.items():
-            vendor_code = get_vendedor_code_from_resp(resp_text)
+        try:
+            existing = db.vendas.find_one({
+                "month": month_name,
+                "vendor": vendor_code,
+                "day": day_num
+            })
             
-            if not vendor_code:
-                vendor_code = "Sem Vendedor"
+            if existing:
+                new_sales = existing["sales"] + data["total_vendas"]
+                new_clients = existing["clients"] + data["clientes"]
+                db.vendas.update_one(
+                    {"month": month_name, "vendor": vendor_code, "day": day_num},
+                    {"$set": {"sales": new_sales, "clients": new_clients}}
+                )
+            else:
+                db.vendas.insert_one({
+                    "month": month_name,
+                    "vendor": vendor_code,
+                    "day": day_num,
+                    "sales": data["total_vendas"],
+                    "clients": data["clientes"]
+                })
             
-            vendor_code_upper = vendor_code.upper()
-            target_row = None
-            for key, row in vendor_row_map.items():
-                if vendor_code_upper in key:
-                    target_row = row
-                    break
-            
-            if not target_row and vendor_code == "Sem Vendedor":
-                target_row = ws_write.max_row + 1
-                ws_write.cell(row=target_row, column=1).value = "Sem Vendedor"
-                vendor_row_map["SEM VENDEDOR"] = target_row
-            
-            if target_row:
-                current_sales = ws_write.cell(row=target_row, column=day_col).value or 0
-                try:
-                    current_sales = float(current_sales)
-                except (ValueError, TypeError):
-                    current_sales = 0
-                
-                new_sales = current_sales + data["total_vendas"]
-                ws_write.cell(row=target_row, column=day_col).value = new_sales
-                
-                current_clients = ws_write.cell(row=target_row, column=client_col).value or 0
-                try:
-                    current_clients = int(float(current_clients))
-                except (ValueError, TypeError):
-                    current_clients = 0
-                
-                new_clients = current_clients + data["clientes"]
-                ws_write.cell(row=target_row, column=client_col).value = new_clients
-                
-                updated_vendors.append(f"{vendor_code}: {data['total_vendas']:.2f} EUR ({data['clientes']} clientes)")
-        
-        wb_write.save(filepath)
-        
-        processed_days[day_key] = True
-        import json
-        with open(processed_file, "w") as f:
-            json.dump(processed_days, f)
-        return True, updated_vendors
-        
-    except Exception as e:
-        return False, f"Erro ao atualizar ficheiro: {str(e)}"
+            updated_vendors.append(f"{vendor_code}: {data['total_vendas']:.2f} EUR ({data['clientes']} clientes)")
+        except Exception as e:
+            return False, f"Erro ao atualizar {vendor_code}: {str(e)}"
+    
+    db.processed_days.insert_one({"month": month_name, "day": day_num})
+    
+    return True, updated_vendors
 
 def get_vendedor_cor(vendedor):
     cores = {
@@ -447,6 +416,30 @@ def get_vendedor_cor(vendedor):
         if key.strip().lower() in vendedor.strip().lower():
             return cor
     return "#333333"
+
+db = get_db()
+
+if db is None:
+    st.sidebar.warning("MongoDB nao configurado. Configure MONGODB_URI nas variaveis de ambiente.")
+    st.sidebar.info("Para importar dados do Excel, configure o MongoDB e faca upload do ficheiro.")
+    
+    uploaded_excel = st.sidebar.file_uploader("Upload ficheiro Excel mensal", type=["xlsx"])
+    if uploaded_excel:
+        filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", uploaded_excel.name)
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, "wb") as f:
+            f.write(uploaded_excel.getbuffer())
+        
+        success, msg = import_excel_to_mongodb(filepath)
+        if success:
+            st.sidebar.success(msg)
+            os.remove(filepath)
+            st.cache_data.clear()
+            st.rerun()
+        else:
+            st.sidebar.error(msg)
+    
+    st.stop()
 
 monthly_data = load_monthly_data()
 daily_files = load_daily_files()
@@ -483,16 +476,24 @@ if monthly_data:
             default=vendedores_disponiveis
         )
 else:
-    st.sidebar.warning("Ficheiro de dados mensais nao encontrado. Coloque 'vendas_mensais_2026.xlsx' na pasta 'data/'.")
-    st.sidebar.info("Pode copiar o ficheiro da pasta 'Vendas Mensais' ou fazer upload abaixo.")
-    uploaded = st.sidebar.file_uploader("Upload ficheiro Excel mensal", type=["xlsx"])
-    if uploaded:
-        filepath = os.path.join(DATA_DIR, "vendas_mensais_2026.xlsx")
+    st.sidebar.warning("Nenhum dado encontrado no MongoDB.")
+    st.sidebar.info("Faça upload do ficheiro Excel mensal para importar os dados.")
+    
+    uploaded_excel = st.sidebar.file_uploader("Upload ficheiro Excel mensal", type=["xlsx"])
+    if uploaded_excel:
+        filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", uploaded_excel.name)
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
         with open(filepath, "wb") as f:
-            f.write(uploaded.getbuffer())
-        st.sidebar.success("Ficheiro carregado! A recarregar...")
-        st.cache_data.clear()
-        st.rerun()
+            f.write(uploaded_excel.getbuffer())
+        
+        success, msg = import_excel_to_mongodb(filepath)
+        if success:
+            st.sidebar.success(msg)
+            os.remove(filepath)
+            st.cache_data.clear()
+            st.rerun()
+        else:
+            st.sidebar.error(msg)
     st.stop()
 
 tab1, tab2 = st.tabs(["Dashboard", "Analise Diaria"])
@@ -526,7 +527,6 @@ with tab1:
                 d: month_data["vendedores"].get(v, {}).get("daily_clients", {}).get(d, 0)
                 for d in filtered_days
             }
-        clientes_por_dia = {d: sum(clientes_por_vendedor_dia[v][d] for v in selected_vendedores) for d in filtered_days}
         
         media_diaria_geral = total_vendas / len(filtered_days) if filtered_days else 0
         vendedores_ativos = sum(1 for v in selected_vendedores if vendedor_stats[v]["dias_trabalho"] > 0)
@@ -778,6 +778,8 @@ with tab2:
             st.error("Nome do ficheiro invalido. Use o formato DD-MM-AAAA.xlsx")
             st.stop()
         
+        DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+        os.makedirs(DATA_DIR, exist_ok=True)
         temp_path = os.path.join(DATA_DIR, uploaded_daily.name)
         with open(temp_path, "wb") as f:
             f.write(uploaded_daily.getbuffer())
@@ -824,7 +826,7 @@ with tab2:
             st.plotly_chart(fig_resp, use_container_width=True)
             
             st.markdown("---")
-            st.markdown("### Atualizar Ficheiro Mensal")
+            st.markdown("### Atualizar Dados Mensais")
             
             if daily_summary:
                 st.info(f"Datos extraidos do ficheiro diario:")
@@ -833,33 +835,13 @@ with tab2:
                     if vendor_code:
                         st.write(f"- **{vendor_code}**: {data['total_vendas']:,.2f} EUR ({data['clientes']} clientes)")
                 
-                if st.button("Atualizar Ficheiro Mensal", type="primary", use_container_width=True):
-                    success, message = update_monthly_file(day_date, daily_summary)
+                if st.button("Atualizar Dados Mensais", type="primary", use_container_width=True):
+                    success, message = update_monthly_data(day_date, daily_summary)
                     if success:
-                        st.success("Ficheiro mensal atualizado com sucesso!")
+                        st.success("Dados mensais atualizados com sucesso!")
                         st.write("Vendedores atualizados:")
                         for v in message:
                             st.write(f"  - {v}")
-                        
-                        try:
-                            import subprocess
-                            subprocess.run(["git", "config", "user.email", "app@render.com"], capture_output=True, timeout=10)
-                            subprocess.run(["git", "config", "user.name", "Vendas Dashboard"], capture_output=True, timeout=10)
-                            subprocess.run(["git", "add", "data/vendas_mensais_2026.xlsx"], capture_output=True, timeout=10)
-                            subprocess.run(["git", "commit", "-m", f"Auto-update: dia {day_date.day}/{day_date.month}"], capture_output=True, timeout=10)
-                            git_token = os.environ.get("GIT_TOKEN", "")
-                            if git_token:
-                                remote_url = subprocess.run(["git", "config", "--get", "remote.origin.url"], capture_output=True, text=True, timeout=10).stdout.strip()
-                                if remote_url.startswith("https://"):
-                                    auth_url = remote_url.replace("https://", f"https://{git_token}@")
-                                    subprocess.run(["git", "remote", "set-url", "origin", auth_url], capture_output=True, timeout=10)
-                            result = subprocess.run(["git", "push"], capture_output=True, text=True, timeout=30)
-                            if result.returncode == 0:
-                                st.info("Alteracoes guardadas no repositorio.")
-                            else:
-                                st.warning(f"Aviso: push falhou - {result.stderr[:100]}")
-                        except Exception as e:
-                            st.warning(f"Aviso: nao foi possivel guardar no repositorio: {e}")
                         
                         st.cache_data.clear()
                         st.rerun()
@@ -877,23 +859,24 @@ with tab2:
             for date_obj in sorted(daily_files.keys(), reverse=True)[:10]:
                 st.write(f"  {date_obj.strftime('%d-%m-%Y')}")
         else:
-            st.write("  Nenhum ficheiro diario encontrado na pasta.")
+            st.write("  Nenhum ficheiro diario encontrado.")
         
         st.markdown("---")
         st.markdown("""
         **Instrucoes:**
-        1. Coloque os ficheiros diarios (ex: `16-06-2026.xlsx`) na pasta `data/`
-        2. Ou faca upload usando o botao acima
+        1. Faça upload do ficheiro Excel do dia (ex: `16-06-2026.xlsx`)
+        2. Os dados serao guardados diretamente no MongoDB
         3. O ficheiro deve ter a estrutura: Entidade | Nome | Total Liq.
-        4. Ao carregar um ficheiro diario, o ficheiro mensal sera atualizado automaticamente
+        4. Os dados persistem mesmo quando a app reinicia
         """)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Como atualizar dados")
 st.sidebar.info("""
-1. Coloque o ficheiro mensal como `vendas_mensais_2026.xlsx` na pasta `data/`
-2. Os ficheiros diarios podem ser feitos upload na aba 'Analise Diaria'
-3. Para atualizar, substitua o ficheiro e recarregue a pagina
+1. Na aba 'Analise Diaria', faca upload do ficheiro diario
+2. Clique em 'Atualizar Dados Mensais'
+3. Os dados sao guardados no MongoDB automaticamente
+4. Nao e necessario ficheiro Excel local
 """)
 st.sidebar.markdown("---")
 st.sidebar.caption("Dashboard de Vendas 2026")
