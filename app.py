@@ -50,6 +50,19 @@ if not check_password():
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
+def evaluate_day_formula(formula, col_values):
+    import re
+    match = re.match(r'^=([A-Z]+)1\+(\d+)$', formula)
+    if match:
+        ref_col_letter = match.group(1)
+        offset = int(match.group(2))
+        ref_col_num = 0
+        for c in ref_col_letter:
+            ref_col_num = ref_col_num * 26 + (ord(c) - ord('A') + 1)
+        if ref_col_num in col_values:
+            return col_values[ref_col_num] + offset
+    return None
+
 @st.cache_data
 def load_monthly_data():
     filepath = os.path.join(DATA_DIR, "vendas_mensais_2026.xlsx")
@@ -74,6 +87,9 @@ def load_monthly_data():
         "Dezembro": "Dezembro"
     }
     
+    import openpyxl
+    wb = openpyxl.load_workbook(filepath, data_only=False)
+    
     for sheet_name in xl.sheet_names:
         display_name = sheet_name
         for pt, clean in month_map.items():
@@ -81,26 +97,46 @@ def load_monthly_data():
                 display_name = clean
                 break
         
-        df = pd.read_excel(filepath, sheet_name=sheet_name, header=None)
-        parsed = parse_month_sheet(df, sheet_name)
-        if parsed is not None:
-            all_months[display_name] = parsed
+        if sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            day_col_mapping = {}
+            col_values = {}
+            
+            for col_idx in range(2, ws.max_column + 1):
+                val = ws.cell(row=1, column=col_idx).value
+                if isinstance(val, (int, float)):
+                    day_num = int(float(val))
+                    if 1 <= day_num <= 31:
+                        day_col_mapping[col_idx] = day_num
+                        col_values[col_idx] = day_num
+                elif isinstance(val, str) and val.startswith('='):
+                    calculated = evaluate_day_formula(val, col_values)
+                    if calculated and 1 <= calculated <= 31:
+                        day_col_mapping[col_idx] = calculated
+                        col_values[col_idx] = calculated
+            
+            df = pd.read_excel(filepath, sheet_name=sheet_name, header=None)
+            parsed = parse_month_sheet(df, sheet_name, day_col_mapping)
+            if parsed is not None:
+                all_months[display_name] = parsed
     
+    wb.close()
     return all_months
 
-def parse_month_sheet(df, sheet_name):
+def parse_month_sheet(df, sheet_name, day_col_mapping=None):
     if df.shape[0] < 3 or df.shape[1] < 5:
         return None
 
-    day_col_mapping = {}
-    for col_idx in range(1, df.shape[1]):
-        val = df.iloc[0, col_idx]
-        try:
-            day_num = int(float(val))
-            if 1 <= day_num <= 31:
-                day_col_mapping[col_idx] = day_num
-        except (ValueError, TypeError):
-            pass
+    if day_col_mapping is None:
+        day_col_mapping = {}
+        for col_idx in range(1, df.shape[1]):
+            val = df.iloc[0, col_idx]
+            try:
+                day_num = int(float(val))
+                if 1 <= day_num <= 31:
+                    day_col_mapping[col_idx] = day_num
+            except (ValueError, TypeError):
+                pass
 
     if not day_col_mapping:
         return None
@@ -688,13 +724,6 @@ with tab2:
                 height=350
             )
             st.plotly_chart(fig_resp, use_container_width=True)
-            
-            st.markdown("### Detalhe por Cliente")
-            st.dataframe(
-                df_daily.style.format({"Total Liq": "{:,.2f} EUR"}),
-                use_container_width=True,
-                hide_index=True
-            )
             
             st.markdown("---")
             st.markdown("### Atualizar Ficheiro Mensal")
