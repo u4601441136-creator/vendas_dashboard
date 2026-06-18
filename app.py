@@ -491,12 +491,13 @@ with tab1:
                 "media_diaria": media_v
             }
         
-        clientes_por_dia = {}
-        for d in filtered_days:
-            clientes_por_dia[d] = sum(
-                month_data["vendedores"].get(v, {}).get("daily_clients", {}).get(d, 0)
-                for v in selected_vendedores
-            )
+        clientes_por_vendedor_dia = {}
+        for v in selected_vendedores:
+            clientes_por_vendedor_dia[v] = {
+                d: month_data["vendedores"].get(v, {}).get("daily_clients", {}).get(d, 0)
+                for d in filtered_days
+            }
+        clientes_por_dia = {d: sum(clientes_por_vendedor_dia[v][d] for v in selected_vendedores) for d in filtered_days}
         
         media_diaria_geral = total_vendas / len(filtered_days) if filtered_days else 0
         vendedores_ativos = sum(1 for v in selected_vendedores if vendedor_stats[v]["dias_trabalho"] > 0)
@@ -538,17 +539,21 @@ with tab1:
             st.plotly_chart(fig_evol, use_container_width=True)
         
         with col_chart2:
-            st.markdown("### Clientes por Dia")
+            st.markdown("### Clientes por Dia (por Vendedor)")
             fig_clients = go.Figure()
-            fig_clients.add_trace(go.Bar(
-                x=list(clientes_por_dia.keys()),
-                y=list(clientes_por_dia.values()),
-                marker_color="#1f77b4",
-                name="Clientes"
-            ))
+            for v in selected_vendedores:
+                if clientes_por_vendedor_dia.get(v):
+                    fig_clients.add_trace(go.Bar(
+                        x=list(filtered_days),
+                        y=list(clientes_por_vendedor_dia[v].values()),
+                        name=v.strip(),
+                        marker_color=get_vendedor_cor(v)
+                    ))
             fig_clients.update_layout(
+                barmode="stack",
                 xaxis_title="Dia",
                 yaxis_title="Nº Clientes",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 height=400,
                 margin=dict(l=40, r=20, t=40, b=40)
             )
