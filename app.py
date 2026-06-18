@@ -847,7 +847,7 @@ with tab2:
                 if st.button("Atualizar Dados Mensais", type="primary", use_container_width=True):
                     if reprocess:
                         db = get_db()
-                        if db:
+                        if db is not None:
                             month_names_map = {
                                 1: "Janeiro", 2: "Fevereiro", 3: "Marco", 4: "Abril",
                                 5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
