@@ -320,7 +320,7 @@ def update_monthly_file(day_date, daily_summary):
     
     try:
         import openpyxl
-        wb = openpyxl.load_workbook(filepath, data_only=True)
+        wb = openpyxl.load_workbook(filepath, data_only=False)
         
         sheet_found = None
         for sn in wb.sheetnames:
@@ -334,14 +334,22 @@ def update_monthly_file(day_date, daily_summary):
         ws = wb[sheet_found]
         
         day_col = None
+        col_values = {}
         for col in range(2, ws.max_column + 1):
             val = ws.cell(row=1, column=col).value
-            try:
-                if int(float(val)) == day_num:
+            if isinstance(val, (int, float)):
+                day_num_val = int(float(val))
+                col_values[col] = day_num_val
+                if day_num_val == day_num:
                     day_col = col
                     break
-            except (ValueError, TypeError):
-                pass
+            elif isinstance(val, str) and val.startswith('='):
+                calculated = evaluate_day_formula(val, col_values)
+                if calculated:
+                    col_values[col] = calculated
+                    if calculated == day_num:
+                        day_col = col
+                        break
         
         if day_col is None:
             return False, f"Coluna para o dia {day_num} nao encontrada"
@@ -361,8 +369,9 @@ def update_monthly_file(day_date, daily_summary):
         updated_vendors = []
         for resp_text, data in daily_summary.items():
             vendor_code = get_vendedor_code_from_resp(resp_text)
+            
             if not vendor_code:
-                continue
+                vendor_code = "Sem Vendedor"
             
             vendor_code_upper = vendor_code.upper()
             target_row = None
@@ -370,6 +379,11 @@ def update_monthly_file(day_date, daily_summary):
                 if vendor_code_upper in key:
                     target_row = row
                     break
+            
+            if not target_row and vendor_code == "Sem Vendedor":
+                target_row = ws_write.max_row + 1
+                ws_write.cell(row=target_row, column=1).value = "Sem Vendedor"
+                vendor_row_map["SEM VENDEDOR"] = target_row
             
             if target_row:
                 current_sales = ws_write.cell(row=target_row, column=day_col).value or 0
