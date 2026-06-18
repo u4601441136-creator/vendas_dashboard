@@ -853,7 +853,9 @@ with tab2:
                                 5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
                                 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
                             }
-                            db.processed_days.delete_many({"month": month_names_map.get(day_date.month), "day": day_date.day})
+                            month_name_rp = month_names_map.get(day_date.month)
+                            db.vendas.delete_many({"month": month_name_rp, "day": day_date.day})
+                            db.processed_days.delete_many({"month": month_name_rp, "day": day_date.day})
                     success, message = update_monthly_data(day_date, daily_summary)
                     if success:
                         st.success("Dados mensais atualizados com sucesso!")
