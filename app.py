@@ -76,7 +76,8 @@ def get_db():
     try:
         client.admin.command("ping")
         return client["vendas_dashboard"]
-    except Exception:
+    except Exception as e:
+        st.session_state["mongo_error"] = str(e)
         return None
 
 def evaluate_day_formula(formula, col_values):
@@ -433,10 +434,15 @@ def get_vendedor_cor(vendedor):
 db = get_db()
 
 if db is None:
-    st.sidebar.warning("MongoDB nao configurado. Configure MONGODB_URI nas variaveis de ambiente.")
-    st.sidebar.info("Para importar dados do Excel, configure o MongoDB e faca upload do ficheiro.")
+    mongo_uri = os.environ.get("MONGODB_URI", "")
+    if mongo_uri:
+        mongo_error = st.session_state.get("mongo_error", "Erro desconhecido")
+        st.sidebar.error(f"MongoDB nao disponivel: {mongo_error}")
+        st.sidebar.info("Verifique se o IP do Render esta na whitelist do MongoDB Atlas (Network Access -> 0.0.0.0/0)")
+    else:
+        st.sidebar.warning("MongoDB nao configurado. Configure MONGODB_URI nas variaveis de ambiente.")
     
-    uploaded_excel = st.sidebar.file_uploader("Upload ficheiro Excel mensal", type=["xlsx"])
+    uploaded_excel = st.sidebar.file_uploader("Upload ficheiro Excel mensal para importar", type=["xlsx"])
     if uploaded_excel:
         filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", uploaded_excel.name)
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
