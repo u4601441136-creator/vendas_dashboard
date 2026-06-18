@@ -840,6 +840,18 @@ with tab2:
                         st.write("Vendedores atualizados:")
                         for v in message:
                             st.write(f"  - {v}")
+                        
+                        try:
+                            import subprocess
+                            subprocess.run(["git", "config", "user.email", "app@render.com"], capture_output=True, timeout=10)
+                            subprocess.run(["git", "config", "user.name", "Vendas Dashboard"], capture_output=True, timeout=10)
+                            subprocess.run(["git", "add", "data/vendas_mensais_2026.xlsx"], capture_output=True, timeout=10)
+                            subprocess.run(["git", "commit", "-m", f"Auto-update: dia {day_date.day}/{day_date.month}"], capture_output=True, timeout=10)
+                            subprocess.run(["git", "push"], capture_output=True, timeout=30)
+                            st.info("Alteracoes guardadas no repositorio.")
+                        except Exception as e:
+                            st.warning(f"Aviso: nao foi possivel guardar no repositorio: {e}")
+                        
                         st.cache_data.clear()
                         st.rerun()
                     else:
