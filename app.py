@@ -847,8 +847,17 @@ with tab2:
                             subprocess.run(["git", "config", "user.name", "Vendas Dashboard"], capture_output=True, timeout=10)
                             subprocess.run(["git", "add", "data/vendas_mensais_2026.xlsx"], capture_output=True, timeout=10)
                             subprocess.run(["git", "commit", "-m", f"Auto-update: dia {day_date.day}/{day_date.month}"], capture_output=True, timeout=10)
-                            subprocess.run(["git", "push"], capture_output=True, timeout=30)
-                            st.info("Alteracoes guardadas no repositorio.")
+                            git_token = os.environ.get("GIT_TOKEN", "")
+                            if git_token:
+                                remote_url = subprocess.run(["git", "config", "--get", "remote.origin.url"], capture_output=True, text=True, timeout=10).stdout.strip()
+                                if remote_url.startswith("https://"):
+                                    auth_url = remote_url.replace("https://", f"https://{git_token}@")
+                                    subprocess.run(["git", "remote", "set-url", "origin", auth_url], capture_output=True, timeout=10)
+                            result = subprocess.run(["git", "push"], capture_output=True, text=True, timeout=30)
+                            if result.returncode == 0:
+                                st.info("Alteracoes guardadas no repositorio.")
+                            else:
+                                st.warning(f"Aviso: push falhou - {result.stderr[:100]}")
                         except Exception as e:
                             st.warning(f"Aviso: nao foi possivel guardar no repositorio: {e}")
                         
