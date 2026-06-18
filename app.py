@@ -337,9 +337,12 @@ def parse_daily_file(filepath):
 
 def get_vendedor_code_from_resp(resp_text):
     import re
-    match = re.search(r':\s*(\w+)', resp_text)
+    match = re.search(r':\s*(.+?)\s*$', resp_text)
     if match:
-        return match.group(1)
+        code = match.group(1).strip()
+        code = re.sub(r'\s*\(\d+\)\s*$', '', code)
+        if code:
+            return code
     return None
 
 def update_monthly_data(day_date, daily_summary):
@@ -836,10 +839,21 @@ with tab2:
                 st.info(f"Datos extraidos do ficheiro diario:")
                 for resp, data in daily_summary.items():
                     vendor_code = get_vendedor_code_from_resp(resp)
-                    if vendor_code:
-                        st.write(f"- **{vendor_code}**: {data['total_vendas']:,.2f} EUR ({data['clientes']} clientes)")
+                    label = vendor_code if vendor_code else "Sem Vendedor"
+                    st.write(f"- **{label}**: {data['total_vendas']:,.2f} EUR ({data['clientes']} clientes)")
+                
+                reprocess = st.checkbox("Reprocessar mesmo que o dia ja tenha sido processado")
                 
                 if st.button("Atualizar Dados Mensais", type="primary", use_container_width=True):
+                    if reprocess:
+                        db = get_db()
+                        if db:
+                            month_names_map = {
+                                1: "Janeiro", 2: "Fevereiro", 3: "Marco", 4: "Abril",
+                                5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+                                9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+                            }
+                            db.processed_days.delete_many({"month": month_names_map.get(day_date.month), "day": day_date.day})
                     success, message = update_monthly_data(day_date, daily_summary)
                     if success:
                         st.success("Dados mensais atualizados com sucesso!")
