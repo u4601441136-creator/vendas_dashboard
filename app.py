@@ -154,13 +154,14 @@ def parse_month_sheet(df, sheet_name, day_col_mapping=None):
         daily_data = {}
         client_data = {}
         for col_idx, day_num in day_col_mapping.items():
-            val_sales = df.iloc[row_idx, col_idx] if col_idx < df.shape[1] else None
+            pandas_col = col_idx - 1
+            val_sales = df.iloc[row_idx, pandas_col] if pandas_col < df.shape[1] else None
             try:
                 daily_data[day_num] = float(val_sales) if pd.notna(val_sales) else 0.0
             except (ValueError, TypeError):
                 daily_data[day_num] = 0.0
 
-            client_col = col_idx + 1
+            client_col = pandas_col + 1
             if client_col < df.shape[1]:
                 val_clients = df.iloc[row_idx, client_col]
                 try:
