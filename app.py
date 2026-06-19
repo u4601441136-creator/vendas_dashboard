@@ -32,7 +32,7 @@ def check_password():
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             st.markdown("<br><br>", unsafe_allow_html=True)
-            st.markdown("## Mapa de Vendas Mensais")
+            st.markdown(f"## Mapa de Vendas Mensais {datetime.now().year}")
             st.markdown("#### Introduza a password para aceder")
             password = st.text_input("Password", type="password", key="pwd_input")
             if st.button("Entrar", use_container_width=True):
@@ -452,7 +452,7 @@ if db is None:
 monthly_data = load_monthly_data()
 daily_files = load_daily_files()
 
-st.sidebar.markdown("## Mapa de Vendas Mensais")
+st.sidebar.markdown(f"## Mapa de Vendas {datetime.now().year}")
 st.sidebar.markdown("---")
 
 if monthly_data:
@@ -506,7 +506,7 @@ else:
 tab1, tab2 = st.tabs(["Dashboard", "Analise Diaria"])
 
 with tab1:
-    st.markdown(f"# Mapa de Vendas - {selected_month}")
+    st.markdown(f"# Mapa de Vendas - {selected_month} {datetime.now().year}")
 
     if month_data and filtered_days:
         total_vendas = 0
@@ -898,4 +898,4 @@ st.sidebar.info("""
 4. Nao e necessario ficheiro Excel local
 """)
 st.sidebar.markdown("---")
-st.sidebar.caption("Dashboard de Vendas | by Jorge Vagarinho")
+st.sidebar.caption(f"Dashboard de Vendas {datetime.now().year} | Jorge Vagarinho")
