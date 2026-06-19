@@ -32,7 +32,7 @@ def check_password():
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             st.markdown("<br><br>", unsafe_allow_html=True)
-            st.markdown("## Mapa de Vendas 2026")
+            st.markdown("## Mapa de Vendas Mensais")
             st.markdown("#### Introduza a password para aceder")
             password = st.text_input("Password", type="password", key="pwd_input")
             if st.button("Entrar", use_container_width=True):
@@ -452,7 +452,7 @@ if db is None:
 monthly_data = load_monthly_data()
 daily_files = load_daily_files()
 
-st.sidebar.markdown("## Mapa de Vendas 2026")
+st.sidebar.markdown("## Mapa de Vendas Mensais")
 st.sidebar.markdown("---")
 
 if monthly_data:
@@ -506,7 +506,7 @@ else:
 tab1, tab2 = st.tabs(["Dashboard", "Analise Diaria"])
 
 with tab1:
-    st.markdown(f"# Mapa de Vendas - {selected_month} 2026")
+    st.markdown(f"# Mapa de Vendas - {selected_month}")
     
     if month_data and filtered_days:
         total_vendas = 0
@@ -635,7 +635,7 @@ with tab1:
         
         st.markdown("### Vendas por Semana de Trabalho")
         from datetime import date, timedelta
-        year = 2026
+        year = datetime.now().year
         month_map = {"Janeiro": 1, "Fevereiro": 2, "Marco": 3, "Março": 3, "Abril": 4, "Maio": 5, "Junho": 6, "Julho": 7, "Agosto": 8, "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12}
         month_num = month_map.get(selected_month, 6)
         
@@ -898,4 +898,4 @@ st.sidebar.info("""
 4. Nao e necessario ficheiro Excel local
 """)
 st.sidebar.markdown("---")
-st.sidebar.caption("Dashboard de Vendas 2026 | Jorge Vagarinho")
+st.sidebar.caption("Dashboard de Vendas | Jorge Vagarinho")
