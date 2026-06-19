@@ -98,7 +98,7 @@ def evaluate_day_formula(formula, col_values):
 def import_excel_to_mongodb(filepath):
     db = get_db()
     if db is None:
-        return False, "MongoDB nao disponivel"
+        return False, "MongoDB não disponível"
 
     import openpyxl
     wb = openpyxl.load_workbook(filepath, data_only=False)
@@ -274,7 +274,7 @@ def load_single_daily(filepath):
                     resp_display = current_resp.replace("Resp. Cobranca: ", "") if current_resp else "N/A"
                     resp_display = resp_display.replace("Resp. Cobran\u00e7a: ", "") if current_resp else "N/A"
                     results.append({
-                        "Responsavel": resp_display,
+                        "Responsável": resp_display,
                         "Entidade": val0,
                         "Nome": val1,
                         "Total Liq": total_liq
@@ -285,7 +285,7 @@ def load_single_daily(filepath):
         if results:
             return pd.DataFrame(results)
     except Exception as e:
-        st.error(f"Erro ao ler ficheiro diario: {e}")
+        st.error(f"Erro ao ler ficheiro diário: {e}")
     return None
 
 def parse_daily_file(filepath):
@@ -309,7 +309,7 @@ def parse_daily_file(filepath):
                 try:
                     total_liq = float(val2)
                     results.append({
-                        "Responsavel": current_resp,
+                        "Responsável": current_resp,
                         "Entidade": val0,
                         "Nome": val1,
                         "Total Liq": total_liq
@@ -319,7 +319,7 @@ def parse_daily_file(filepath):
 
         resp_summary = {}
         for r in results:
-            resp = r["Responsavel"]
+            resp = r["Responsável"]
             if resp not in resp_summary:
                 resp_summary[resp] = {"total_vendas": 0, "clientes": 0}
             resp_summary[resp]["total_vendas"] += r["Total Liq"]
@@ -332,7 +332,7 @@ def parse_daily_file(filepath):
 
         return resp_summary
     except Exception as e:
-        st.error(f"Erro ao ler ficheiro diario: {e}")
+        st.error(f"Erro ao ler ficheiro diário: {e}")
     return None
 
 def get_vendedor_code_from_resp(resp_text):
@@ -348,7 +348,7 @@ def get_vendedor_code_from_resp(resp_text):
 def update_monthly_data(day_date, daily_summary):
     db = get_db()
     if db is None:
-        return False, "MongoDB nao disponivel"
+        return False, "MongoDB não disponível"
 
     day_num = day_date.day
     month_num = day_date.month
@@ -361,7 +361,7 @@ def update_monthly_data(day_date, daily_summary):
 
     processed = db.processed_days.find_one({"month": month_name, "day": day_num})
     if processed:
-        return False, f"O dia {day_num} de {month_name} ja foi processado anteriormente"
+        return False, f"O dia {day_num} de {month_name} já foi processado anteriormente"
 
     updated_vendors = []
     for resp_text, data in daily_summary.items():
@@ -427,10 +427,10 @@ if db is None:
     mongo_uri = os.environ.get("MONGODB_URI", "")
     if mongo_uri:
         mongo_error = st.session_state.get("mongo_error", "Erro desconhecido")
-        st.sidebar.error(f"MongoDB nao disponivel: {mongo_error}")
-        st.sidebar.info("Verifique se o IP do Render esta na whitelist do MongoDB Atlas (Network Access -> 0.0.0.0/0)")
+        st.sidebar.error(f"MongoDB não disponível: {mongo_error}")
+        st.sidebar.info("Verifique se o IP do Render está na whitelist do MongoDB Atlas (Network Access -> 0.0.0.0/0)")
     else:
-        st.sidebar.warning("MongoDB nao configurado. Configure MONGODB_URI nas variaveis de ambiente.")
+        st.sidebar.warning("MongoDB não configurado. Configure MONGODB_URI nas variáveis de ambiente.")
 
     uploaded_excel = st.sidebar.file_uploader("Upload ficheiro Excel mensal para importar", type=["xlsx"])
     if uploaded_excel:
@@ -460,9 +460,9 @@ if monthly_data:
                     "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
     available_months = [m for m in months_order if m in monthly_data]
 
-    selected_month = st.sidebar.selectbox("Mes", available_months, index=len(available_months)-1 if available_months else 0)
+    selected_month = st.sidebar.selectbox("Mês", available_months, index=len(available_months)-1 if available_months else 0)
 
-    st.sidebar.markdown("### Filtro por Periodo")
+    st.sidebar.markdown("### Filtro por Período")
     month_data = monthly_data.get(selected_month, None)
 
     if month_data:
@@ -503,7 +503,7 @@ else:
             st.sidebar.error(msg)
     st.stop()
 
-tab1, tab2 = st.tabs(["Dashboard", "Analise Diaria"])
+tab1, tab2 = st.tabs(["Dashboard", "Análise Diária"])
 
 with tab1:
     st.markdown(f"# Mapa de Vendas - {selected_month} {datetime.now().year}")
@@ -542,7 +542,7 @@ with tab1:
         with kpi1:
             st.metric("Total Vendas", f"{total_vendas:,.2f} EUR")
         with kpi2:
-            st.metric("Media Diaria", f"{media_diaria_geral:,.2f} EUR")
+            st.metric("Média Diária", f"{media_diaria_geral:,.2f} EUR")
         with kpi3:
             st.metric("Vendedores Ativos", f"{vendedores_ativos}")
 
@@ -551,7 +551,7 @@ with tab1:
         col_chart1, col_chart2 = st.columns(2)
 
         with col_chart1:
-            st.markdown("### Evolucao Diaria por Vendedor")
+            st.markdown("### Evolução Diária por Vendedor")
             fig_evol = go.Figure()
             for v in selected_vendedores:
                 v_data = month_data["vendedores"].get(v, {})
@@ -614,7 +614,7 @@ with tab1:
                 st.plotly_chart(fig_acum, use_container_width=True)
 
         with col_chart4:
-            st.markdown("### Media Diaria por Vendedor")
+            st.markdown("### Média Diária por Vendedor")
             media_data = {v.strip(): vendedor_stats[v]["media_diaria"] for v in selected_vendedores if vendedor_stats[v]["dias_trabalho"] > 0}
             if media_data:
                 sorted_media = dict(sorted(media_data.items(), key=lambda x: x[1], reverse=True))
@@ -625,7 +625,7 @@ with tab1:
                     marker_color=[get_vendedor_cor(v) for v in sorted_media.keys()]
                 )])
                 fig_media.update_layout(
-                    xaxis_title="Media Diaria (EUR)",
+                    xaxis_title="Média Diária (EUR)",
                     height=400,
                     margin=dict(l=40, r=20, t=40, b=40)
                 )
@@ -709,7 +709,7 @@ with tab1:
             for d in filtered_days:
                 row[f"Dia {d}"] = v_data.get("daily_sales", {}).get(d, 0)
             row["Acumulado"] = vendedor_stats[v]["vendas"]
-            row["Media/Dia"] = round(vendedor_stats[v]["media_diaria"], 2)
+            row["Média/Dia"] = round(vendedor_stats[v]["media_diaria"], 2)
             table_data.append(row)
 
         df_table = pd.DataFrame(table_data)
@@ -721,13 +721,13 @@ with tab1:
                 for v in selected_vendedores
             )
         total_row["Acumulado"] = total_vendas
-        total_row["Media/Dia"] = round(media_diaria_geral, 2)
+        total_row["Média/Dia"] = round(media_diaria_geral, 2)
         df_table = pd.concat([df_table, pd.DataFrame([total_row])], ignore_index=True)
 
         st.dataframe(df_table, use_container_width=True, hide_index=True)
 
-        with st.expander("Comparacao Mes a Mes"):
-            st.markdown("### Comparacao de Vendas entre Meses")
+        with st.expander("Comparação Mês a Mês"):
+            st.markdown("### Comparação de Vendas entre Meses")
             months_to_compare = st.multiselect(
                 "Selecionar meses para comparar",
                 available_months,
@@ -750,7 +750,7 @@ with tab1:
                             for d in m_data.get("days", [])
                         )
                         comparison_data.append({
-                            "Mes": m,
+                            "Mês": m,
                             "Total Vendas": total_m,
                             "Total Clientes": clientes_m
                         })
@@ -759,11 +759,11 @@ with tab1:
 
                 fig_comp = make_subplots(rows=1, cols=2, subplot_titles=("Vendas Totais", "Total Clientes"))
                 fig_comp.add_trace(go.Bar(
-                    x=df_comp["Mes"], y=df_comp["Total Vendas"],
+                    x=df_comp["Mês"], y=df_comp["Total Vendas"],
                     marker_color="#1f77b4", name="Vendas"
                 ), row=1, col=1)
                 fig_comp.add_trace(go.Bar(
-                    x=df_comp["Mes"], y=df_comp["Total Clientes"],
+                    x=df_comp["Mês"], y=df_comp["Total Clientes"],
                     marker_color="#ff7f0e", name="Clientes"
                 ), row=1, col=2)
                 fig_comp.update_layout(height=400, showlegend=False)
@@ -772,7 +772,7 @@ with tab1:
                 st.dataframe(df_comp, use_container_width=True, hide_index=True)
 
 with tab2:
-    st.markdown("# Analise Diaria")
+    st.markdown("# Análise Diária")
     st.markdown("### Carregar ficheiro de vendas do dia")
 
     uploaded_daily = st.file_uploader("Carregar ficheiro Excel do dia (ex: 16-06-2026.xlsx)", type=["xlsx"], key="daily_upload")
@@ -782,7 +782,7 @@ with tab2:
             date_str = uploaded_daily.name.replace(".xlsx", "")
             day_date = datetime.strptime(date_str, "%d-%m-%Y")
         except ValueError:
-            st.error("Nome do ficheiro invalido. Use o formato DD-MM-AAAA.xlsx")
+            st.error("Nome do ficheiro inválido. Use o formato DD-MM-AAAA.xlsx")
             st.stop()
 
         DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -800,7 +800,7 @@ with tab2:
 
             total_dia = df_daily["Total Liq"].sum()
             clientes_dia = len(df_daily)
-            responsaveis = df_daily["Responsavel"].unique()
+            responsaveis = df_daily["Responsável"].unique()
 
             k1, k2, k3 = st.columns(3)
             with k1:
@@ -808,25 +808,25 @@ with tab2:
             with k2:
                 st.metric("N Clientes", f"{clientes_dia}")
             with k3:
-                st.metric("Responsaveis", f"{len(responsaveis)}")
+                st.metric("Responsáveis", f"{len(responsaveis)}")
 
             st.markdown("---")
 
             st.markdown("### Vendas por Responsavel")
-            resumo_resp = df_daily.groupby("Responsavel").agg(
+            resumo_resp = df_daily.groupby("Responsável").agg(
                 Total=("Total Liq", "sum"),
                 Clientes=("Total Liq", "count")
             ).reset_index().sort_values("Total", ascending=False)
 
             fig_resp = go.Figure(data=[go.Bar(
-                x=resumo_resp["Responsavel"],
+                x=resumo_resp["Responsável"],
                 y=resumo_resp["Total"],
                 text=resumo_resp["Total"].apply(lambda x: f"{x:,.2f}"),
                 textposition="outside",
                 marker_color="#1f77b4"
             )])
             fig_resp.update_layout(
-                xaxis_title="Responsavel",
+                xaxis_title="Responsável",
                 yaxis_title="Total (EUR)",
                 height=350
             )
@@ -836,13 +836,13 @@ with tab2:
             st.markdown("### Atualizar Dados Mensais")
 
             if daily_summary:
-                st.info(f"Datos extraidos do ficheiro diario:")
+                st.info(f"Dados extraídos do ficheiro diário:")
                 for resp, data in daily_summary.items():
                     vendor_code = get_vendedor_code_from_resp(resp)
                     label = vendor_code if vendor_code else "Sem Vendedor"
                     st.write(f"- **{label}**: {data['total_vendas']:,.2f} EUR ({data['clientes']} clientes)")
 
-                reprocess = st.checkbox("Reprocessar mesmo que o dia ja tenha sido processado")
+                reprocess = st.checkbox("Reprocessar mesmo que o dia já tenha sido processado")
 
                 if st.button("Atualizar Dados Mensais", type="primary", use_container_width=True):
                     if reprocess:
@@ -867,24 +867,24 @@ with tab2:
                     else:
                         st.error(f"Erro ao atualizar: {message}")
             else:
-                st.warning("Nao foi possivel extrair dados do ficheiro diario.")
+                st.warning("Não foi possível extrair dados do ficheiro diário.")
 
             os.remove(temp_path)
         else:
-            st.error("Nao foi possivel ler o ficheiro. Verifique o formato.")
+            st.error("Não foi possível ler o ficheiro. Verifique o formato.")
     else:
-        st.info("Ficheiros diarios disponiveis no sistema:")
+        st.info("Ficheiros diários disponíveis no sistema:")
         if daily_files:
             for date_obj in sorted(daily_files.keys(), reverse=True)[:10]:
                 st.write(f"  {date_obj.strftime('%d-%m-%Y')}")
         else:
-            st.write("  Nenhum ficheiro diario encontrado.")
+            st.write("  Nenhum ficheiro diário encontrado.")
 
         st.markdown("---")
         st.markdown("""
-        **Instrucoes:**
+        **Instruções:**
         1. Faça upload do ficheiro Excel do dia (ex: `DD-MM-AAAA.xlsx`)
-        2. Os dados serao guardados diretamente na base de dados
+        2. Os dados serão guardados diretamente na base de dados
         3. O ficheiro deve ter a estrutura: Entidade | Nome | Total Liq.
         4. Os dados persistem mesmo quando a app reinicia
         """)
@@ -892,10 +892,10 @@ with tab2:
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Como atualizar dados")
 st.sidebar.info("""
-1. Na aba 'Analise Diaria', faca upload do ficheiro diario
+1. Na aba 'Análise Diária', faça upload do ficheiro diário
 2. Clique em 'Atualizar Dados Mensais'
-3. Os dados sao guardados na base de dados automaticamente
-4. Nao e necessario ficheiro Excel local
+3. Os dados são guardados na base de dados automaticamente
+4. Não é necessário ficheiro Excel local
 """)
 st.sidebar.markdown("---")
 st.sidebar.caption(f"Dashboard de Vendas {datetime.now().year} | Jorge Vagarinho")
