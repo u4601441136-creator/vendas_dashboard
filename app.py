@@ -898,4 +898,4 @@ st.sidebar.info("""
 4. Nao e necessario ficheiro Excel local
 """)
 st.sidebar.markdown("---")
-st.sidebar.caption("Dashboard de Vendas 2026")
+st.sidebar.caption("Dashboard de Vendas 2026 | Jorge Vagarinho")
