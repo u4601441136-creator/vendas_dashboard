@@ -574,24 +574,25 @@ with tab1:
 
         with col_chart2:
             st.markdown("### Clientes por Dia (por Vendedor)")
-            fig_clients = go.Figure()
+            table_data = []
             for v in selected_vendedores:
-                if clientes_por_vendedor_dia.get(v):
-                    fig_clients.add_trace(go.Bar(
-                        x=list(filtered_days),
-                        y=list(clientes_por_vendedor_dia[v].values()),
-                        name=v.strip(),
-                        marker_color=get_vendedor_cor(v)
-                    ))
-            fig_clients.update_layout(
-                barmode="stack",
-                xaxis_title="Dia",
-                yaxis_title="Nº Clientes",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                height=400,
-                margin=dict(l=40, r=20, t=40, b=40)
-            )
-            st.plotly_chart(fig_clients, use_container_width=True)
+                v_data = month_data["vendedores"].get(v, {})
+                row = {"Vendedor": v.strip()}
+                total_clientes = 0
+                for d in filtered_days:
+                    c = v_data.get("daily_clients", {}).get(d, 0)
+                    row[str(d)] = c
+                    total_clientes += c
+                row["Total"] = total_clientes
+                table_data.append(row)
+            
+            if table_data:
+                import pandas as pd
+                df_clients = pd.DataFrame(table_data)
+                totals = {col: df_clients[col].sum() for col in df_clients.columns if col not in ["Vendedor"]}
+                totals["Vendedor"] = "TOTAL"
+                df_clients = pd.concat([df_clients, pd.DataFrame([totals])], ignore_index=True)
+                st.dataframe(df_clients, use_container_width=True, hide_index=True)
 
         st.markdown("---")
 
