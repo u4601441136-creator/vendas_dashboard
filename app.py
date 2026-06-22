@@ -813,7 +813,7 @@ with tab2:
 
             st.markdown("---")
 
-            st.markdown("### Vendas por Responsavel")
+            st.markdown("### Vendas por Responsável")
             resumo_resp = df_daily.groupby("Responsável").agg(
                 Total=("Total Liq", "sum"),
                 Clientes=("Total Liq", "count")
@@ -829,7 +829,8 @@ with tab2:
             fig_resp.update_layout(
                 xaxis_title="Responsável",
                 yaxis_title="Total (EUR)",
-                height=350
+                height=350,
+                margin=dict(l=40, r=20, t=60, b=40)
             )
             st.plotly_chart(fig_resp, use_container_width=True)
 
