@@ -717,7 +717,7 @@ with tab1:
                     orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
                 ),
                 height=400,
-                margin=dict(l=40, r=20, t=40, b=40),
+                margin=dict(l=40, r=20, t=120, b=40),
             )
             st.plotly_chart(fig_evol, use_container_width=True)
 
@@ -774,7 +774,7 @@ with tab1:
                         )
                     ]
                 )
-                fig_acum.update_layout(height=400, margin=dict(l=40, r=20, t=40, b=40))
+                fig_acum.update_layout(height=400, margin=dict(l=40, r=20, t=120, b=40))
                 st.plotly_chart(fig_acum, use_container_width=True)
 
         with col_chart4:
@@ -803,7 +803,7 @@ with tab1:
                 fig_media.update_layout(
                     xaxis_title="Média Diária (EUR)",
                     height=400,
-                    margin=dict(l=40, r=20, t=40, b=40),
+                    margin=dict(l=40, r=20, t=120, b=40),
                 )
                 st.plotly_chart(fig_media, use_container_width=True)
 
@@ -876,7 +876,7 @@ with tab1:
                     orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
                 ),
                 height=400,
-                margin=dict(l=40, r=20, t=40, b=40),
+                margin=dict(l=40, r=20, t=120, b=40),
             )
             st.plotly_chart(fig_week, use_container_width=True)
 
@@ -991,7 +991,7 @@ with tab1:
                     row=1,
                     col=2,
                 )
-                fig_comp.update_layout(height=400, showlegend=False)
+                fig_comp.update_layout(height=400, showlegend=False, margin=dict(l=40, r=20, t=120, b=40))
                 st.plotly_chart(fig_comp, use_container_width=True)
 
                 st.dataframe(df_comp, use_container_width=True, hide_index=True)
@@ -1064,7 +1064,7 @@ with tab2:
                 xaxis_title="Responsável",
                 yaxis_title="Total (EUR)",
                 height=420,
-                margin=dict(l=40, r=20, t=80, b=40),
+                margin=dict(l=40, r=20, t=120, b=40),
             )
             st.plotly_chart(fig_resp, use_container_width=True)
 
